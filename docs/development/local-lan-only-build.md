@@ -107,7 +107,7 @@ Engine 的地址过滤模块，删除配对 mDNS 的重复枚举，替换启动�
 2026-09-14 已在 Apple Silicon 上基于桌面提交 `fd8832c3` 执行
 `bun run tauri:build:local`，成功生成 `.app` 和 `.dmg`。主程序与 `uniclipd`
 均为 arm64，应用的 ad-hoc 签名验证和 DMG 完整性检查通过；没有 Apple 公证。
-尚未执行 Windows 原生打包或真实 Mac/Windows 双设备验收。
+该轮未执行 Windows 原生打包或真实 Mac/Windows 双设备验收。
 
 ### 第二轮：邀请发现失败
 
@@ -119,4 +119,32 @@ Engine 配对、地址过滤、邀请适配器及 LAN-only 策略测试通过，
 分段收发测试通过。工作区编译检查通过，HarmonyOS 合同测试有既有未使用导入警告。
 新版测试程序的广泛网络测试受到 macOS 应用防火墙授权阻塞；旧测试程序的对照
 用例通过，此项待放行新测试程序后补验。前端相关 9 项测试通过，构建通过，
-React Doctor 为 100/100。第二轮安装包与跨设备配对验收尚未完成。
+React Doctor 为 100/100。
+
+第二轮桌面提交为 `d74d98e2`，Engine 为 `e9632b64`。macOS `.app` 与 `.dmg`
+构建成功，arm64 架构、ad-hoc 签名验证和 DMG 完整性检查通过。DMG SHA-256：
+
+```text
+4ce64f0f339763a530760ef14ca4721ee9fce60e16eccad300fa6f9a36f5f835
+```
+
+Windows 在同一桌面提交上完成 release 后台和 NSIS 安装包构建，主程序 PE
+架构为 x64。安装包为 `target/release/bundle/nsis/UniClipboard_1.0.0-alpha.11_x64-setup.exe`，
+大小 20,420,155 字节，SHA-256：
+
+```text
+3387a9621a489109be9e05cc5de86d188768247f7864b74d85b012fdfe0450c7
+```
+
+两台真实设备使用独立临时配置，从启动起关闭中继和 overlay 地址，禁用系统
+剪贴板，仅发送随机测试文本。Windows 发出邀请、Mac 加入的状态达到 `active`；
+Mac → Windows、Windows → Mac 各有一个目标接受，接收端查询到的完整文本
+与发送内容一致。测试前后均核对仅局域网设置保持关闭中继。Windows 测试程序
+使用仅允许 Mac 局域网地址入站 UDP 的临时防火墙规则；测试配置、进程和规则
+均已清理，未修改已有空间或剪贴板内容。
+
+反向邀请（Mac 发出、Windows 加入）在 60 秒观察窗口内保持 `pending`。
+macOS 系统日志明确显示新 `uniclipd` 的入站连接被应用防火墙挂起，等待用户
+响应授权弹窗；当时 Mac 处于锁屏状态。这项需解锁并允许新程序后补验，不能
+将前一轮的双向文本通过扩大为两种邀请方向都通过。尚未执行断开互联网出口、
+切换 Wi-Fi、生产配置覆盖安装后的验收。
