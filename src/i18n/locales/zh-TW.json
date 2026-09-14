@@ -2297,7 +2297,7 @@
       "rejected": {
         "title": "無法加入空間",
         "reasons": {
-          "invitation_unavailable": "邀請碼已失效。",
+          "invitation_unavailable": "無法取得邀請。請讓對方保持邀請碼視窗開啟，並檢查區域網路連線。",
           "authentication_rejected": "口令或身分驗證未通過。",
           "identity_conflict": "裝置身分存在衝突。",
           "base_history_changed": "對方空間已發生變化，請重新取得邀請碼。",

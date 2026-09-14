@@ -51,7 +51,7 @@ dbg_macro = "warn"
 [workspace.dependencies]
 # All desktop consumers use one immutable Engine revision. Features remain
 # opt-in at each host boundary so LAN compatibility cannot become a default.
-uc-engine = { git = "https://github.com/THQDDQHT/Engine.git", rev = "97a27537c21baf46d142ce9dcb37438953c44373" }
+uc-engine = { git = "https://github.com/THQDDQHT/Engine.git", rev = "e9632b6496bcf1fdd53247d0cbd5af26ec42595f" }
 
 # tauri 2.11 是 specta rc.25 兼容的最低版本 —— 2.10.x 及之前在
 # `tauri/src/ipc/channel.rs` 用了 `#[specta(remote=..., rename="...")]`
@@ -71,6 +71,8 @@ tauri-plugin-autostart = "2"
 # This must remain an auditable Git revision rather than a local submodule so a
 # clean checkout resolves the same patched blob implementation on every target.
 [patch.crates-io]
+# Match the Engine discovery implementation, including its shutdown fix.
+swarm-discovery = { git = "https://github.com/THQDDQHT/Engine.git", rev = "e9632b6496bcf1fdd53247d0cbd5af26ec42595f" }
 iroh-blobs = { git = "https://github.com/UniClipboard/iroh-blobs.git", rev = "b33af91e8a4bd189cc0f954fc6584feb5ffd1823" }
 
 # dev profile:用 line-tables-only 替代完整 dwarf,大幅缩短 link 阶段。

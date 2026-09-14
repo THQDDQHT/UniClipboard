@@ -25,7 +25,7 @@ interface SwitchState {
   code: string
   pass: string
   showPass: boolean
-  errorKind: SwitchSpaceErrorKind | null
+  errorKind: SwitchSpaceErrorKind | 'join_rejected' | null
   errorRaw: string | null
   result: ActiveJoinSpaceResponse | null
   pendingJoinId: string | null
@@ -70,7 +70,7 @@ export function useSwitchSpace({ onOpenChange }: { onOpenChange: (open: boolean)
       }
       update({
         pendingJoinId: null,
-        errorKind: 'internal',
+        errorKind: 'join_rejected',
         errorRaw: resolution.reason,
         step: 'failed',
       })
@@ -96,7 +96,7 @@ export function useSwitchSpace({ onOpenChange }: { onOpenChange: (open: boolean)
       } else if (res.status === 'pending') {
         update({ pendingJoinId: res.joinId, step: 'pending' })
       } else if (res.status === 'rejected') {
-        update({ errorKind: 'internal', errorRaw: res.reason, step: 'failed' })
+        resolveJoinAdmission(res)
       }
     } catch (err) {
       log.error({ err }, 'switchSpace failed')
@@ -150,6 +150,9 @@ export function useSwitchSpace({ onOpenChange }: { onOpenChange: (open: boolean)
 
   const failureMessage = useMemo(() => {
     if (!errorKind) return null
+    if (errorKind === 'join_rejected') {
+      return t(`setup.joinPending.rejected.reasons.${errorRaw}`, { keyPrefix: '' })
+    }
     const key = `failed.reasons.${errorKind}`
     const translated = t(key)
     if (translated !== key) return translated

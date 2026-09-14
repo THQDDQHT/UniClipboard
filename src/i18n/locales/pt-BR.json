@@ -2305,7 +2305,7 @@
       "rejected": {
         "title": "Não foi possível entrar no espaço",
         "reasons": {
-          "invitation_unavailable": "O convite não está mais disponível.",
+          "invitation_unavailable": "Não foi possível obter o convite. Mantenha a janela do convite aberta no outro dispositivo e verifique a conexão com a rede local.",
           "authentication_rejected": "A senha ou identidade não foi aceita.",
           "identity_conflict": "A identidade deste dispositivo está em conflito.",
           "base_history_changed": "O espaço do anfitrião mudou. Obtenha um novo convite.",

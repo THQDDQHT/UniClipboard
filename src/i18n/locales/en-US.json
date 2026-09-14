@@ -2299,7 +2299,7 @@
       "rejected": {
         "title": "Could not join the space",
         "reasons": {
-          "invitation_unavailable": "The invitation is no longer available.",
+          "invitation_unavailable": "The invitation could not be retrieved. Keep the invitation window open on the other device and check the local network connection.",
           "authentication_rejected": "The passphrase or identity was not accepted.",
           "identity_conflict": "This device identity conflicts with the space.",
           "base_history_changed": "The host space changed. Get a new invitation and try again.",

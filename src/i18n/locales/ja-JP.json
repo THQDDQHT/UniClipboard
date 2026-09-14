@@ -2298,7 +2298,7 @@
       "rejected": {
         "title": "スペースに参加できませんでした",
         "reasons": {
-          "invitation_unavailable": "招待コードは利用できなくなりました。",
+          "invitation_unavailable": "招待を取得できませんでした。相手の端末で招待コードの画面を開いたままにして、ローカルネットワーク接続を確認してください。",
           "authentication_rejected": "パスフレーズまたは本人確認が拒否されました。",
           "identity_conflict": "このデバイスの識別情報が競合しています。",
           "base_history_changed": "相手のスペースが変更されました。新しい招待コードを取得してください。",

@@ -155,7 +155,8 @@ function checkRepositoryBoundary(metadata, { checkPaths = true } = {}) {
   }
 
   for (const packageMetadata of metadata.packages) {
-    if (!MIGRATED_PACKAGES.has(packageMetadata.name)) continue
+    if (!MIGRATED_PACKAGES.has(packageMetadata.name) && packageMetadata.name !== 'swarm-discovery')
+      continue
     if (packageMetadata.source !== enginePin.resolvedSource) {
       addProblem(
         problems,
@@ -295,6 +296,15 @@ function expectRejected(name, mutate, metadata, sources) {
 }
 
 function runNegativeFixtures(metadata, sources) {
+  expectRejected(
+    'discovery library ignores Engine patch',
+    changed => {
+      changed.packages.find(candidate => candidate.name === 'swarm-discovery').source =
+        'registry+https://github.com/rust-lang/crates.io-index'
+    },
+    metadata,
+    sources
+  )
   expectRejected(
     'local core path dependency',
     changed => {

@@ -2297,7 +2297,7 @@
       "rejected": {
         "title": "未能加入空间",
         "reasons": {
-          "invitation_unavailable": "邀请码已失效。",
+          "invitation_unavailable": "无法获取邀请。请让对方保持邀请码窗口打开，并检查局域网连接。",
           "authentication_rejected": "口令或身份验证未通过。",
           "identity_conflict": "设备身份存在冲突。",
           "base_history_changed": "对方空间已发生变化，请重新获取邀请码。",
