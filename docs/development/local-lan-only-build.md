@@ -99,4 +99,8 @@ Engine 的地址过滤模块，删除配对 mDNS 的重复枚举，替换启动�
 
 首次网络测试中有一项实时连接测试返回离线；在原始 Engine 提交单独运行该项、
 在修复提交重跑网络测试集和单独重跑该项均通过，未为此修改连接逻辑。
-尚未执行 Windows 原生打包、Mac 安装包构建或真实 Mac/Windows 双设备验收。
+
+2026-09-14 已在 Apple Silicon 上基于桌面提交 `fd8832c3` 执行
+`bun run tauri:build:local`，成功生成 `.app` 和 `.dmg`。主程序与 `uniclipd`
+均为 arm64，应用的 ad-hoc 签名验证和 DMG 完整性检查通过；没有 Apple 公证。
+尚未执行 Windows 原生打包或真实 Mac/Windows 双设备验收。
