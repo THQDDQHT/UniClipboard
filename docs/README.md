@@ -19,6 +19,7 @@ When documentation conflicts with code, treat the code as the source of truth an
 
 **For Implementation:**
 
+- [局域网修复版的本地构建](development/local-lan-only-build.md) - 从个人 fork 在 Windows、macOS 构建并验证 LAN-only
 - [自动连接的桌面宿主接入](specs/automatic-peer-connections.md) - 前台、系统唤醒与 Engine 的责任边界和验证记录
 
 - [Bootstrap System](architecture/bootstrap.md) - How dependency injection works
