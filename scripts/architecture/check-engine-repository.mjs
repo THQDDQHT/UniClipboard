@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPOSITORY_ROOT = resolve(SCRIPT_DIR, '../..')
-const ENGINE_REPOSITORY = 'https://github.com/UniClipboard/Engine.git'
+const ENGINE_REPOSITORY = 'https://github.com/THQDDQHT/Engine.git'
 
 const MIGRATED_PACKAGES = new Set([
   'uc-engine',

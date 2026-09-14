@@ -9,7 +9,7 @@ bun run check:engine-repository
 该入口读取 Cargo 的完整锁定依赖信息，并检查以下规则：
 
 - 已迁出的核心、绑定、兼容和验收目录不能留在 desktop workspace 或文件树中。
-- desktop 只直接依赖来自 `UniClipboard/Engine` 不可变提交的 `uc-engine`。
+- 本个人修复分支的 desktop 只直接依赖来自 `THQDDQHT/Engine` 不可变提交的 `uc-engine`。
 - desktop 正式运行代码只通过 `uc-engine` 使用核心业务和观测合同，不能直接依赖内部实现包、观测合同包或 LAN 协议包。
 - `uc-observability` 通过 `uc-engine::observability` 使用可移植观测约定。
 - `uc-webserver` 必须显式启用 LAN 兼容；daemon 和 bootstrap 不能直接启用；CLI 只允许在开发工具中显式启用。
@@ -18,3 +18,6 @@ bun run check:engine-repository
 检查程序自带三个隔离错误样例，分别模拟本地 Engine 路径、浮动 Engine 版本和自动 LAN 回退。每次执行都必须证明三个样例会被拒绝。Rust 消费边界测试另行阻止任何桌面包重新直接依赖 Engine 内部包。
 
 Engine 内部依赖、公开入口、绑定来源、密文持久化和发布完整性由 `UniClipboard/Engine` 仓自己的检查负责。desktop 不再读取 Engine 源码来重复验证这些规则。
+
+本个人修复分支将 Engine 来源固定为 `THQDDQHT/Engine`，保留完整提交哈希、
+单一来源、禁止本地核心副本和禁止自动 LAN 兼容回退的全部检查。
