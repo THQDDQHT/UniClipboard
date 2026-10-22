@@ -1,7 +1,7 @@
 # v0.19.3 局域网修复版
 
 本分支 `feat/v0.19.3-lan-fix` 基于正式标签 `v0.19.3`，版本号为
-`0.19.3-lan.1`。保留该版本的界面和协议，不合入后续主界面改版。
+`0.19.3-lan.2`（版本号以 `package.json` 为准）。保留该版本的界面和协议，不合入后续主界面改版。
 原分支 `feat/lan-only-local-fix` 保留不动。
 
 ## 迁移范围
@@ -15,17 +15,33 @@
   `b799c0ecac4101af72ca7b9aeced58b4d34a34f8`，不复制第三方补丁。
 - `iroh-blobs` 固定到原有子模块的同一个提交，方便 GitHub 干净检出直接构建。
 - 新版切换空间错误提示依赖后续准入流程，旧版没有该界面，因此不迁入。
-- 不改变旧版加密、身份验证与中继开关。需要仅局域网时，在网络设置中关闭中继，
-  并按提示重启后台服务。
+- 不改变旧版加密、身份验证与中继开关的语义，但新安装默认开启「仅局域网模式」
+  （`network.allow_relay_fallback` 默认值为 `false`）。已有的设置文件显式保存了该字段，
+  不受影响。需要中继回退时，在网络设置中关闭「仅局域网模式」并按提示重启后台服务；
+  仅在关闭该模式后才会显示自定义中继节点设置。
 
 这是对既有结构性网络缺陷的回移：用共享网卡分类替换重复枚举和启动快照，
 没有增加另一套并行发现流程。第三方补丁依赖固定提交，便于审计与重现。
 
-## GitHub 构建
+## GitHub 构建与发布
 
-推送本分支会自动构建。也可打开 fork 的 Actions，选择 `Build personal installers`
-（工作流文件为 `build.yml`），分支选择
-`feat/v0.19.3-lan-fix`，手动运行：
+发布版由推送标签触发。在 fork 中更新版本号（`Cargo.toml`、`src-tauri/Cargo.toml`、
+`package.json`、`src-tauri/tauri.conf.json` 与 `Cargo.lock`）后，推送形如
+`v<版本号>` 的标签，例如 `v0.19.3-lan.2`：
+
+```bash
+git tag v0.19.3-lan.2
+git push origin v0.19.3-lan.2
+```
+
+标签推送会构建 Apple Silicon macOS `.dmg` 和 Windows x64 便携版 ZIP，
+全部成功后自动创建同名 GitHub Release，仅附带 `.dmg`、`*-portable.zip` 和覆盖
+这两个文件的 `SHA256SUMS.txt`（不上传 NSIS 安装程序）。缺少 `.dmg` 或便携版 ZIP
+时发布步骤会失败。
+
+也可打开 fork 的 Actions，选择 `Build personal installers`
+（工作流文件为 `build.yml`）手动运行（`workflow_dispatch`）。手动运行只上传
+Artifacts，不创建 Release：
 
 - `all`：Apple Silicon macOS `.dmg` 和 Windows x64 安装程序及便携版 ZIP。
 - `macos-aarch64`、`macos-x86_64`、`windows-x86_64`：分别构建单个平台。
@@ -69,7 +85,7 @@ bun run tauri:build:local --bundles nsis
 
 ## Windows 便携版
 
-Windows 构建同时生成 `UniClipboard_0.19.3-lan.1_x64-portable.zip`。
+Windows 构建同时生成 `UniClipboard_0.19.3-lan.2_x64-portable.zip`。
 完整解压到可写目录，双击 `UniClipboard.exe` 运行；`uniclipd.exe` 与
 `portable.dat` 必须保留在同一目录。应用数据、密钥、搜索索引及日志位于
 程序旁的 `data` 目录，沿用既有加密方式。首次使用需要重新配置和配对，
