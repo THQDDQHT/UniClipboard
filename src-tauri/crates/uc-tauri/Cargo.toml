@@ -6,12 +6,15 @@ edition = "2021"
 description = "Tauri adapter layer for UniClipboard"
 
 [features]
+default = ["manual-updates"]
 # Previously forwarded to uc-bootstrap/dev-profile -> uc-platform/dev-profile.
 # The GUI client is now a pure client of the external daemon and resolves paths
 # via uc-app-paths (runtime UC_PROFILE env var); the compile-time dev-profile
 # feature only matters for the daemon binary (uc-daemon crate). Kept as a no-op
 # so the existing feature chain (workspace root -> uc-tauri) doesn't break.
 dev-profile = []
+# Personal builds receive updates only through manually downloaded installers.
+manual-updates = []
 
 [dependencies]
 # Workspace crates

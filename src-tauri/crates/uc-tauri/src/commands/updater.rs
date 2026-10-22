@@ -279,6 +279,11 @@ pub(crate) async fn do_check_for_update(
     channel: Option<UpdateChannel>,
     pending: &PendingUpdate,
 ) -> Result<Option<UpdateMetadata>, String> {
+    if cfg!(feature = "manual-updates") {
+        *lock_state(&pending.0)? = PendingUpdateState::None;
+        info!(target: "updater", "manual-update build; skipping upstream update checks");
+        return Ok(None);
+    }
     {
         let guard = lock_state(&pending.0)?;
         if matches!(*guard, PendingUpdateState::Downloading { .. }) {
