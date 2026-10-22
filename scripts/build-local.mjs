@@ -28,8 +28,9 @@ execFileSync(
     'src-tauri/tauri.local.conf.json',
     '--features',
     'manual-updates',
-    '--locked',
     ...args,
+    '--',
+    '--locked',
   ],
   { cwd: repoRoot, stdio: 'inherit' }
 )
