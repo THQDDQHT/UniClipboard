@@ -78,6 +78,9 @@ jobs:
         run: cargo test --locked -p uc-tauri --lib commands::updater::tests
       - name: Build installer with bundled daemon
         run: bun run tauri:build:local --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+      - name: Package Windows portable archive
+        if: runner.os == 'Windows'
+        run: python scripts/build-windows-portable.py --target ${{ matrix.target }}
       - name: Record source revision and checksums
         shell: bash
         env:

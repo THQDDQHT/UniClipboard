@@ -25,9 +25,9 @@ like the installed version.
 
 Updates:
   The portable build does NOT update itself. To upgrade, download the newer
-  "*-portable.zip" from the Releases page and replace UniClipboard.exe and
+  "*-portable.zip" from the fork's Actions artifacts and replace UniClipboard.exe and
   uniclipd.exe. Your "data" folder is preserved across upgrades.
-  Releases: https://github.com/UniClipboard/UniClipboard/releases
+  Builds: https://github.com/THQDDQHT/UniClipboard/actions/workflows/build.yml
 
 Requirements:
   Windows 10/11 with the Microsoft Edge WebView2 Runtime (preinstalled on
@@ -60,9 +60,9 @@ Known limitation:
 数据写到 %LOCALAPPDATA%\app.uniclipboard.desktop\。
 
 更新：
-  便携版不会自更新。升级时请从 Releases 页面下载新的 “*-portable.zip” 并
+  便携版不会自更新。升级时请从个人 fork 的 Actions 构建产物下载新的 “*-portable.zip” 并
   替换 UniClipboard.exe 与 uniclipd.exe，升级过程中 “data” 文件夹会被保留。
-  Releases: https://github.com/UniClipboard/UniClipboard/releases
+  Builds: https://github.com/THQDDQHT/UniClipboard/actions/workflows/build.yml
 
 运行要求：
   Windows 10/11，并安装 Microsoft Edge WebView2 Runtime（新版 Windows 已

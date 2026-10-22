@@ -27,12 +27,12 @@
 （工作流文件为 `build.yml`），分支选择
 `feat/v0.19.3-lan-fix`，手动运行：
 
-- `all`：Apple Silicon macOS `.dmg` 和 Windows x64 安装程序。
+- `all`：Apple Silicon macOS `.dmg` 和 Windows x64 安装程序及便携版 ZIP。
 - `macos-aarch64`、`macos-x86_64`、`windows-x86_64`：分别构建单个平台。
 
 工作流使用锁定依赖，先运行网络回归和更新检查测试，再构建相同目标架构的
 `uniclipd` 与图形应用。完成后从本次运行的 Artifacts 下载对应压缩包，内含
-安装程序、`SHA256SUMS.txt` 与源码提交记录 `SOURCE.txt`。保留期为 30 天；
+安装程序、Windows 便携版 ZIP、`SHA256SUMS.txt` 与源码提交记录 `SOURCE.txt`。保留期为 30 天；
 未配置发布到官方渠道，也不会修改上游仓库。
 
 本构建不需要上游签名私钥或 Apple 开发者证书。macOS 使用 ad-hoc 签名，
@@ -66,3 +66,21 @@ bun run tauri:build:local --bundles nsis
 降级前应完整退出图形应用与后台，备份整个数据目录；先用独立 `UC_PROFILE`
 验证，再使用与 v0.19.3 兼容的旧备份或建立新的空间并重新配对。
 新旧版本的数据格式与配对协议不能视为可逆；两端应使用相同个人构建。
+
+## Windows 便携版
+
+Windows 构建同时生成 `UniClipboard_0.19.3-lan.1_x64-portable.zip`。
+完整解压到可写目录，双击 `UniClipboard.exe` 运行；`uniclipd.exe` 与
+`portable.dat` 必须保留在同一目录。应用数据、密钥、搜索索引及日志位于
+程序旁的 `data` 目录，沿用既有加密方式。首次使用需要重新配置和配对，
+不会自动迁入安装版的数据。
+
+需要 Microsoft Edge WebView2 Runtime。WebView2 浏览器缓存仍可能写入
+系统用户目录，因此便携版不等同于完全无系统痕迹。官方更新检查同样停用。
+
+在 Windows 本地完成 `bun run tauri:build:local --target x86_64-pc-windows-msvc --bundles nsis`
+后，可以单独生成便携包：
+
+```powershell
+python scripts/build-windows-portable.py --target x86_64-pc-windows-msvc
+```
