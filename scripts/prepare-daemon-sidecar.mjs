@@ -84,7 +84,7 @@ const exeSuffix = isWindows ? '.exe' : ''
 const profile = release ? 'release' : 'debug'
 
 // 1) Build the daemon binary for the requested target.
-const buildArgs = ['build', '-p', 'uc-daemon', '--bin', 'uniclipd']
+const buildArgs = ['build', '--locked', '-p', 'uc-daemon', '--bin', 'uniclipd']
 if (release) buildArgs.push('--release')
 if (target) buildArgs.push('--target', target)
 console.log(`[sidecar] cargo ${buildArgs.join(' ')}`)
