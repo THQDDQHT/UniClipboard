@@ -93,7 +93,7 @@ pub async fn build_daemon_lifecycle(
     // Phase 94 NETSET-03:从 settings 读取 LAN-only Mode 偏好后翻译为
     // `IrohNodeConfig`。`SettingsPort::load` 当前错误返回类型 `anyhow::Result`
     // 不区分 NotFound vs Parse;`FileSettingsRepository::load` 已对 NotFound
-    // 兜底返回 `Settings::default()` (即 `allow_relay_fallback: true`)。
+    // 兜底返回 `Settings::default()` (即 `allow_relay_fallback: false`)。
     // 故此处只需对剩余 Parse/IO 错误硬失败 —— LAN-only 信任锚点不容许脏
     // settings 撒谎。
     let settings = deps

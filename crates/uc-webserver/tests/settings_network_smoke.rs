@@ -169,12 +169,12 @@ async fn general_only_patch_no_op() {
         "legacy patch (no network) must NOT signal restart"
     );
 
-    // GET 确认持久层未被抹掉，仍是 default true（NETSET-02 #2 — PUT 响应不再
+    // GET 确认持久层未被抹掉，仍是 default false（LAN-only；NETSET-02 #2 — PUT 响应不再
     // 回显 SettingsDto，未被 clobber 这点改由 GET 验证）。
     let get_resp = simulate_get(&facade).await;
     assert_eq!(
         get_resp["network"]["allowRelayFallback"],
-        Value::Bool(true),
+        Value::Bool(false),
         "after legacy PUT, GET must still see preserved network value"
     );
 }

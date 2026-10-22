@@ -84,7 +84,7 @@ const NetworkSection: React.FC = () => {
   const { setting, error, updateNetworkSetting } = useSetting()
 
   // 当前持久值（来自 SettingContext，作为 baseline）
-  const persistedAllowRelay = setting?.network?.allowRelayFallback ?? true
+  const persistedAllowRelay = setting?.network?.allowRelayFallback ?? false
   const persistedAllowOverlay = setting?.network?.allowOverlayNetworkAddrs ?? false
   const persistedCustomRelayUrls = setting?.network?.customRelayUrls ?? []
   const persistedCongestionController: CongestionController =
@@ -242,7 +242,6 @@ const NetworkSection: React.FC = () => {
         label={t('settings.sections.network.lanOnly.label')}
         labelExtra={<LanOnlyDisclosure />}
         description={t('settings.sections.network.lanOnly.description')}
-        experimentalKey="network.lanOnly"
       >
         <Switch
           id="lan-only-switch"
@@ -287,7 +286,10 @@ const NetworkSection: React.FC = () => {
           </SelectContent>
         </Select>
       </SettingRow>
-      <CustomRelayUrlsField value={customRelayUrls} onChange={handleCustomRelayUrlsChange} />
+      {/* Custom relays only matter when relay fallback is allowed (LAN-only OFF). */}
+      {allowRelayFallback && (
+        <CustomRelayUrlsField value={customRelayUrls} onChange={handleCustomRelayUrlsChange} />
+      )}
       {saveError && (
         <div className="px-4 pb-3 text-xs text-destructive" role="alert">
           {saveError}

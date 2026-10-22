@@ -358,7 +358,7 @@ impl std::str::FromStr for CongestionController {
 /// 网络相关设置（LAN-only Mode 字段族）。
 ///
 /// `#[serde(default)]` 让缺字段时回退到 `Default::default()`：
-/// - `allow_relay_fallback = true`（允许 fallback，breaking change 警惕）
+/// - `allow_relay_fallback = false`（个人局域网版默认 LAN-only，不回退到 relay）
 /// - `allow_overlay_network_addrs = false`（默认过滤虚拟网卡候选）
 /// - `custom_relay_urls = []`（空列表继续使用 iroh 默认中继）
 ///
@@ -367,8 +367,8 @@ impl std::str::FromStr for CongestionController {
 #[serde(default)]
 pub struct NetworkSettings {
     /// 是否允许 iroh 在直连失败时回落到公网中继。
-    /// `true`（默认）= 允许 fallback，跨网段设备仍可通过 relay 同步；
-    /// `false` = LAN-only，禁用 relay，跨网段设备会失联。
+    /// `true` = 允许 fallback，跨网段设备仍可通过 relay 同步；
+    /// `false`（默认）= LAN-only，禁用 relay，跨网段设备会失联。
     /// 业务正向语义：UI "LAN-only Mode = ON" → 此字段 = `false`。
     pub allow_relay_fallback: bool,
 

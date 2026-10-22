@@ -971,8 +971,8 @@ mod network_dto_tests {
         let core_settings = core::Settings::default();
         let dto: SettingsDto = core_settings.into();
         assert!(
-            dto.network.allow_relay_fallback,
-            "Settings::default network MUST be true"
+            !dto.network.allow_relay_fallback,
+            "Settings::default network MUST be false (LAN-only by default)"
         );
     }
 

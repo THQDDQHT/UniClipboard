@@ -36,6 +36,13 @@ const baseSetting: Settings = makeBaseSettings({
   general: { theme: 'light', themeColor: 'zinc', language: 'zh-CN' },
 })
 
+// The default is LAN-only (allowRelayFallback=false); tests that exercise the
+// relay-only controls (custom relay URLs) start from relay fallback enabled.
+const relayEnabledSetting: Settings = {
+  ...baseSetting,
+  network: { ...baseSetting.network, allowRelayFallback: true },
+}
+
 type UpdateNetworkSettingFn = (
   newNetworkSetting: Partial<NetworkSettings>
 ) => Promise<{ restartRequired: boolean }>
@@ -136,7 +143,7 @@ describe('NetworkSection — Phase 95 集成', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const mockUpdate = vi.fn().mockResolvedValue({ restartRequired: true })
-    setupSetting({ updateNetworkSetting: mockUpdate })
+    setupSetting({ setting: relayEnabledSetting, updateNetworkSetting: mockUpdate })
 
     render(<NetworkSection />)
     const sw = await screen.findByRole('switch', { name: /LAN-only/ })
@@ -165,7 +172,7 @@ describe('NetworkSection — Phase 95 集成', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const mockUpdate = vi.fn().mockResolvedValue({ restartRequired: true })
-    setupSetting({ updateNetworkSetting: mockUpdate })
+    setupSetting({ setting: relayEnabledSetting, updateNetworkSetting: mockUpdate })
 
     render(<NetworkSection />)
     const sw = await screen.findByRole('switch', { name: /LAN-only/ })
@@ -231,7 +238,7 @@ describe('NetworkSection — Phase 95 集成', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const mockUpdate = vi.fn().mockRejectedValueOnce(new Error('PUT failed'))
-    setupSetting({ updateNetworkSetting: mockUpdate })
+    setupSetting({ setting: relayEnabledSetting, updateNetworkSetting: mockUpdate })
 
     render(<NetworkSection />)
     const sw = await screen.findByRole('switch', { name: /LAN-only/ })
@@ -319,7 +326,7 @@ describe('NetworkSection — Phase 95 集成', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const mockUpdate = vi.fn().mockResolvedValue({ restartRequired: true })
-    setupSetting({ updateNetworkSetting: mockUpdate })
+    setupSetting({ setting: relayEnabledSetting, updateNetworkSetting: mockUpdate })
 
     render(<NetworkSection />)
     const sw = await screen.findByRole('switch', { name: /虚拟网络地址|overlay/i })
@@ -344,7 +351,7 @@ describe('NetworkSection — Phase 95 集成', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const mockUpdate = vi.fn().mockResolvedValue({ restartRequired: true })
-    setupSetting({ updateNetworkSetting: mockUpdate })
+    setupSetting({ setting: relayEnabledSetting, updateNetworkSetting: mockUpdate })
 
     render(<NetworkSection />)
     const lanOnlySw = await screen.findByRole('switch', { name: /LAN-only/ })
@@ -380,6 +387,7 @@ describe('NetworkSection — Phase 95 集成', () => {
 
   it('Test 19: 自定义中继列表从 settings 渲染为逐项 URL 输入', async () => {
     renderWithOverrides({
+      allowRelayFallback: true,
       customRelayUrls: ['https://relay-a.example.com.', 'https://relay-b.example.com.'],
     })
     expect(
@@ -394,7 +402,7 @@ describe('NetworkSection — Phase 95 集成', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const mockUpdate = vi.fn().mockResolvedValue({ restartRequired: true })
-    setupSetting({ updateNetworkSetting: mockUpdate })
+    setupSetting({ setting: relayEnabledSetting, updateNetworkSetting: mockUpdate })
 
     render(<NetworkSection />)
     const firstInput = await screen.findByRole('textbox', {
@@ -427,6 +435,7 @@ describe('NetworkSection — Phase 95 集成', () => {
     setupSetting({ updateNetworkSetting: mockUpdate })
 
     render(<NetworkSection />)
+    // Default is LAN-only ON; turning it OFF reveals the custom relay field.
     await user.click(await screen.findByRole('switch', { name: /LAN-only/ }))
     const textbox = screen.getByRole('textbox', {
       name: /自定义中继节点 1|Custom relay node 1/,
@@ -438,7 +447,7 @@ describe('NetworkSection — Phase 95 集成', () => {
     })
 
     expect(mockUpdate).toHaveBeenCalledWith({
-      allowRelayFallback: false,
+      allowRelayFallback: true,
       allowOverlayNetworkAddrs: false,
       customRelayUrls: [],
       congestionController: 'cubic',
@@ -446,11 +455,26 @@ describe('NetworkSection — Phase 95 集成', () => {
     expect(screen.getByRole('alert').textContent).toMatch(/无效的中继 URL|Invalid relay URL/)
   })
 
+  it('hides custom relay field in LAN-only mode and shows it when relay fallback is allowed', async () => {
+    const user = userEvent.setup()
+    renderWithOverrides({ allowRelayFallback: false })
+    const sw = await screen.findByRole('switch', { name: /LAN-only/ })
+    expect(
+      screen.queryByRole('textbox', { name: /自定义中继节点 1|Custom relay node 1/ })
+    ).toBeNull()
+
+    await user.click(sw)
+
+    expect(
+      await screen.findByRole('textbox', { name: /自定义中继节点 1|Custom relay node 1/ })
+    ).toBeInTheDocument()
+  })
+
   it('Test 21: 自定义中继 URL 非 http(s) 时不保存并显示 inline error', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const mockUpdate = vi.fn().mockResolvedValue({ restartRequired: true })
-    setupSetting({ updateNetworkSetting: mockUpdate })
+    setupSetting({ setting: relayEnabledSetting, updateNetworkSetting: mockUpdate })
 
     render(<NetworkSection />)
     const textbox = await screen.findByRole('textbox', {

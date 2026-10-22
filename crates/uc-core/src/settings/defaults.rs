@@ -251,20 +251,20 @@ impl Default for FileSyncSettings {
 }
 
 impl Default for NetworkSettings {
-    /// 返回默认 `NetworkSettings`：直连失败时允许 iroh 回退到公共 relay
-    /// （保持既有 v0.6.x 行为）。
+    /// 返回默认 `NetworkSettings`：默认启用 LAN-only Mode（个人局域网版），
+    /// 直连失败时不回退到公共 relay。
     ///
     /// 默认值：
-    /// - `allow_relay_fallback`: true
+    /// - `allow_relay_fallback`: false
     /// - `allow_overlay_network_addrs`: false
     /// - `custom_relay_urls`: 空列表（沿用 iroh 默认中继）
     ///
-    // 默认 true = 允许 fallback。
-    // 改成 false 会让所有跨网段老用户突然离线，属于 breaking change。
-    // 修改默认值前请先 grep `LAN-only Mode` 文档与 changelog。
+    // Default false = LAN-only (relay fallback disabled) for the personal LAN fork.
+    // Existing persisted settings are unaffected; only missing fields and new installs
+    // use this default. Grep `LAN-only Mode` docs and changelog before changing it.
     fn default() -> Self {
         Self {
-            allow_relay_fallback: true,
+            allow_relay_fallback: false,
             allow_overlay_network_addrs: false,
             custom_relay_urls: Vec::new(),
             congestion_controller: CongestionController::default(),
@@ -346,23 +346,22 @@ mod tests {
         Theme, CURRENT_SCHEMA_VERSION,
     };
 
-    /// Pitfall 2 防御：默认值必须为 true（允许 fallback），保护老用户
-    /// 跨网段同步行为。改 false = breaking change。
+    /// 个人局域网版：默认值为 false（LAN-only Mode 默认开启，不回退到 relay）。
     #[test]
-    fn network_settings_default_allows_relay_fallback() {
+    fn network_settings_default_is_lan_only() {
         let n = NetworkSettings::default();
         assert!(
-            n.allow_relay_fallback,
-            "NetworkSettings::default().allow_relay_fallback MUST be true (Pitfall 2)"
+            !n.allow_relay_fallback,
+            "NetworkSettings::default().allow_relay_fallback MUST be false (LAN-only by default)"
         );
     }
 
     /// Pitfall 2 防御：顶层 Settings::default 把 network 装配进去，
     /// 字段值与子结构 default 保持一致。
     #[test]
-    fn settings_default_includes_network_with_fallback_allowed() {
+    fn settings_default_includes_network_with_lan_only() {
         let s = Settings::default();
-        assert!(s.network.allow_relay_fallback);
+        assert!(!s.network.allow_relay_fallback);
         assert!(!s.general.debug_mode);
         assert_eq!(s.schema_version, CURRENT_SCHEMA_VERSION);
     }
@@ -389,15 +388,15 @@ mod tests {
     }
 
     /// NETSET-02 success criterion #2：缺 `network` 段的旧 settings.json
-    /// 反序列化必须回填默认值 true。
+    /// 反序列化必须回填默认值 false（LAN-only）。
     #[test]
     fn old_settings_json_without_network_section_falls_back_to_default() {
         // 模拟 v0.6.x 时代写出的 settings.json 片段（无 network 字段）
         let json = r#"{}"#;
         let s: Settings = serde_json::from_str(json).expect("parse minimal settings");
         assert!(
-            s.network.allow_relay_fallback,
-            "missing network section MUST default to true"
+            !s.network.allow_relay_fallback,
+            "missing network section MUST default to false (LAN-only)"
         );
         // A versionless JSON blob must NOT read back as CURRENT_SCHEMA_VERSION
         // (that would make it look already-migrated and skip the migration
@@ -685,7 +684,7 @@ mod tests {
 
         // 后续新增段全部走 Default
         assert_eq!(s.file_sync, FileSyncSettings::default());
-        assert!(s.network.allow_relay_fallback);
+        assert!(!s.network.allow_relay_fallback);
         assert!(!s.network.allow_overlay_network_addrs);
         assert!(s.network.custom_relay_urls.is_empty());
         assert!(!s.mobile_sync.enabled);

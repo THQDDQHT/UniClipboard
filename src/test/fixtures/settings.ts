@@ -82,7 +82,7 @@ export function makeBaseSettings(overrides: BaseSettingsOverrides = {}): Setting
       fileAutoCleanup: true,
     },
     network: {
-      allowRelayFallback: true,
+      allowRelayFallback: false,
       allowOverlayNetworkAddrs: false,
       customRelayUrls: [],
       congestionController: 'cubic',
