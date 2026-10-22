@@ -19,15 +19,16 @@
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use swarm_discovery::{Discoverer, IpClass, SpawnError};
+use swarm_discovery::SpawnError;
+
+use super::mdns_transport::pairing_discoverer;
+use crate::network::iroh::enumerate_publish_addrs;
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
-use super::discovery_constants::{
-    compute_code_hash, PAIR_SERVICE_NAME, TXT_CODE_HASH, TXT_EXPIRES_AT_MS, TXT_TICKET,
-};
+use super::discovery_constants::{compute_code_hash, TXT_CODE_HASH, TXT_EXPIRES_AT_MS, TXT_TICKET};
 
 /// Errors raised while starting / running a resolver. Timeout is
 /// **not** an error — it returns `Ok(None)` so the caller can compose
@@ -105,14 +106,8 @@ impl MdnsPairingResolver {
             self_actor_id.clone()
         };
 
-        let discoverer = Discoverer::new(PAIR_SERVICE_NAME.to_string(), actor_id)
-            // See [`MdnsPairingPublisher::start`] for why `Auto` instead
-            // of `V4AndV6`: hosts with no IPv6 default route (Wi-Fi off,
-            // VPN-only, certain virtual interfaces) would otherwise see
-            // the resolver crash on `join_multicast_v6` even when v4
-            // multicast works fine.
-            .with_ip_class(IpClass::Auto)
-            .with_callback(move |peer_id, peer| {
+        let discoverer = pairing_discoverer(actor_id, &enumerate_publish_addrs()).with_callback(
+            move |peer_id, peer| {
                 // Ignore our own announce if it leaked back.
                 if peer_id == self_id_for_cb {
                     return;
@@ -166,7 +161,8 @@ impl MdnsPairingResolver {
                         let _ = sender.send(saw_ticket).await;
                     }
                 });
-            });
+            },
+        );
 
         // Hold the guard until we either match, timeout, or error.
         // Dropping it stops the browse and frees the multicast socket.

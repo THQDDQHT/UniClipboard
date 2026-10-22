@@ -22,7 +22,6 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::OnceLock;
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
-use iroh::address_lookup::AddrFilter;
 use iroh::endpoint::{presets, QuicTransportConfig, VarInt};
 use iroh::protocol::{Router, RouterBuilder};
 use iroh::{Endpoint, RelayMode, RelayUrl, TransportAddr};
@@ -54,7 +53,7 @@ use super::active_clipboard::{
     IrohActiveClipboardPullServeAdapter, IrohActiveClipboardReceiverAdapter, ACTIVE_CLIPBOARD_ALPN,
     ACTIVE_CLIPBOARD_PULL_ALPN,
 };
-use super::addr_filter::{apply_addr_filter, enumerate_local_lan_v4};
+use super::addr_filter::{build_addr_filter, enumerate_publish_addrs, multicast_interfaces};
 use super::blobs::{IrohBlobTransferAdapter, BLOBS_ALPN};
 use super::clipboard_dispatch_adapter::{IrohClipboardDispatchAdapter, CLIPBOARD_ALPN};
 use super::clipboard_receiver_adapter::IrohClipboardReceiverAdapter;
@@ -419,29 +418,6 @@ fn build_transport_config(cc: CongestionController) -> QuicTransportConfig {
         .build()
 }
 
-/// Build the `AddrFilter` we hand to `Endpoint::builder().addr_filter(...)`.
-/// The filter is applied at the `AddressLookupServices` layer (see
-/// iroh#3960 / #4010), upstream of every individual lookup service, so a
-/// single registration covers pkarr / mdns / static / DHT lookups in one
-/// place — that's what makes this a viable replacement for "fork iroh and
-/// patch magicsock" (issue #486 §三 A).
-///
-/// `allow_overlay` is captured by the closure so the predicate behaviour is
-/// fixed at endpoint bind time — the iroh `Endpoint` does not support
-/// runtime mutation of address filters; toggling
-/// `Settings.network.allow_overlay_network_addrs` requires a daemon restart
-/// (the same constraint as `disable_relays`).
-fn build_addr_filter(allow_overlay: bool) -> AddrFilter {
-    // Snapshot local LAN subnets ONCE at endpoint-bind time. The closure
-    // captures the result for the lifetime of the endpoint; switching
-    // wifi/LAN at runtime won't be picked up (same constraint as
-    // `allow_overlay`). See `enumerate_local_lan_v4` doc for rationale.
-    let local_lan_v4 = enumerate_local_lan_v4();
-    AddrFilter::new(move |addrs: &Vec<TransportAddr>| {
-        apply_addr_filter(addrs, allow_overlay, &local_lan_v4)
-    })
-}
-
 fn relay_mode_from_config(config: &IrohNodeConfig) -> Result<RelayMode, IrohNodeError> {
     if config.disable_relays {
         return Ok(RelayMode::Disabled);
@@ -644,7 +620,10 @@ impl IrohNodeBuilder {
             // The `addr_filter` above also runs over what mDNS publishes,
             // so a Clash `198.18.0.1` won't leak into the LAN announcement
             // even if magicsock surfaces it locally.
-            .address_lookup(MdnsAddressLookup::builder())
+            .address_lookup(
+                MdnsAddressLookup::builder()
+                    .multicast_interfaces_v4(|| multicast_interfaces(&enumerate_publish_addrs())),
+            )
             .bind()
             .await
             .map_err(|err| IrohNodeError::Bind(err.to_string()))?;
@@ -1462,6 +1441,8 @@ mod tests {
     // is_virtual_nic_ip / build_addr_filter unit tests
     // ──────────────────────────────────────────────────────────────────
 
+    use super::super::addr_filter::apply_addr_filter;
+    use std::collections::BTreeSet;
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
     use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 
@@ -1560,7 +1541,7 @@ mod tests {
                 4242,
             ))),
         ];
-        let kept = apply_addr_filter(&addrs, false, &[]);
+        let kept = apply_addr_filter(&addrs, false, &[], &BTreeSet::new());
         assert_eq!(
             kept.len(),
             addrs.len(),
@@ -1591,7 +1572,8 @@ mod tests {
                 4242,
             ))), // Clash — always dropped
         ];
-        let kept: Vec<TransportAddr> = apply_addr_filter(&addrs, false, &[]).into_owned();
+        let kept: Vec<TransportAddr> =
+            apply_addr_filter(&addrs, false, &[], &BTreeSet::new()).into_owned();
         assert_eq!(kept.len(), 1, "only the real LAN IP should survive");
         match &kept[0] {
             TransportAddr::Ip(s) => assert_eq!(s.ip().to_string(), "192.168.1.1"),
@@ -1627,7 +1609,8 @@ mod tests {
                 4242,
             ))), // link-local — always dropped
         ];
-        let kept: Vec<TransportAddr> = apply_addr_filter(&addrs, true, &[]).into_owned();
+        let kept: Vec<TransportAddr> =
+            apply_addr_filter(&addrs, true, &[], &BTreeSet::new()).into_owned();
         assert_eq!(kept.len(), 3, "real LAN + 2 overlay candidates kept");
         let ips: Vec<String> = kept
             .iter()
@@ -1670,7 +1653,8 @@ mod tests {
             v4_socket("192.168.31.224", 60053), // peer LAN — keep
             v4_socket("180.164.125.95", 58279), // peer public NAT — drop (hairpin)
         ];
-        let kept: Vec<TransportAddr> = apply_addr_filter(&addrs, false, &lan_31()).into_owned();
+        let kept: Vec<TransportAddr> =
+            apply_addr_filter(&addrs, false, &lan_31(), &BTreeSet::new()).into_owned();
         assert_eq!(kept.len(), 1, "only peer LAN should survive");
         match &kept[0] {
             TransportAddr::Ip(s) => assert_eq!(s.ip().to_string(), "192.168.31.224"),
@@ -1687,7 +1671,8 @@ mod tests {
             v4_socket("192.168.1.5", 60053),  // peer LAN — NOT our subnet
             v4_socket("203.0.113.42", 58279), // peer public — must keep
         ];
-        let kept: Vec<TransportAddr> = apply_addr_filter(&addrs, false, &lan_31()).into_owned();
+        let kept: Vec<TransportAddr> =
+            apply_addr_filter(&addrs, false, &lan_31(), &BTreeSet::new()).into_owned();
         assert_eq!(
             kept.len(),
             2,
@@ -1701,7 +1686,8 @@ mod tests {
     #[test]
     fn hairpin_filter_keeps_public_when_peer_has_no_rfc1918() {
         let addrs = vec![v4_socket("203.0.113.42", 58279)];
-        let kept: Vec<TransportAddr> = apply_addr_filter(&addrs, false, &lan_31()).into_owned();
+        let kept: Vec<TransportAddr> =
+            apply_addr_filter(&addrs, false, &lan_31(), &BTreeSet::new()).into_owned();
         assert_eq!(
             kept.len(),
             1,
@@ -1717,7 +1703,8 @@ mod tests {
             v4_socket("192.168.31.224", 60053),
             v4_socket("180.164.125.95", 58279), // would be dropped if hairpin filter active
         ];
-        let kept: Vec<TransportAddr> = apply_addr_filter(&addrs, false, &[]).into_owned();
+        let kept: Vec<TransportAddr> =
+            apply_addr_filter(&addrs, false, &[], &BTreeSet::new()).into_owned();
         assert_eq!(
             kept.len(),
             2,
@@ -1734,7 +1721,8 @@ mod tests {
             v4_socket("10.0.0.5", 60053),       // peer's other LAN (different subnet)
             v4_socket("180.164.125.95", 58279), // public — drop
         ];
-        let kept: Vec<TransportAddr> = apply_addr_filter(&addrs, false, &lan_31()).into_owned();
+        let kept: Vec<TransportAddr> =
+            apply_addr_filter(&addrs, false, &lan_31(), &BTreeSet::new()).into_owned();
         let kept_ips: Vec<String> = kept
             .iter()
             .filter_map(|a| match a {
@@ -1761,7 +1749,8 @@ mod tests {
             v4_socket("180.164.125.95", 58279), // dropped
             TransportAddr::Relay(relay_url),    // must survive
         ];
-        let kept: Vec<TransportAddr> = apply_addr_filter(&addrs, false, &lan_31()).into_owned();
+        let kept: Vec<TransportAddr> =
+            apply_addr_filter(&addrs, false, &lan_31(), &BTreeSet::new()).into_owned();
         let relay_count = kept
             .iter()
             .filter(|a| matches!(a, TransportAddr::Relay(_)))
@@ -1776,8 +1765,8 @@ mod tests {
     /// every CI/dev machine we run on (loopback if nothing else, which is
     /// filtered out). Make sure the call doesn't panic.
     #[test]
-    fn enumerate_local_lan_v4_does_not_panic() {
-        let _ = enumerate_local_lan_v4();
+    fn build_addr_filter_does_not_panic() {
+        let _ = build_addr_filter(false);
     }
 
     #[test]

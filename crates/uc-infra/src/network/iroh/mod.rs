@@ -29,7 +29,7 @@ pub use active_clipboard::{
     IrohActiveClipboardReceiverAdapter, IrohActiveClipboardReceiverHandler, ACTIVE_CLIPBOARD_ALPN,
     ACTIVE_CLIPBOARD_PULL_ALPN,
 };
-pub(crate) use addr_filter::filter_endpoint_addr;
+pub(crate) use addr_filter::{enumerate_publish_addrs, filter_endpoint_addr, multicast_interfaces};
 pub use blobs::{IrohBlobTransferAdapter, BLOBS_ALPN};
 pub use clipboard_dispatch_adapter::{IrohClipboardDispatchAdapter, CLIPBOARD_ALPN};
 pub use clipboard_receiver_adapter::{IrohClipboardReceiverAdapter, IrohClipboardReceiverHandler};

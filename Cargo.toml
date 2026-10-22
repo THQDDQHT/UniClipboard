@@ -74,7 +74,10 @@ tauri-plugin-autostart = "2"
 # vendor/iroh-blobs/src/store/fs.rs::HashContext::persist 与
 # vendor/iroh-blobs/src/store/fs/bao_file.rs::persist_regression 单元测试。
 [patch.crates-io]
-iroh-blobs = { path = "vendor/iroh-blobs" }
+iroh-blobs = { git = "https://github.com/UniClipboard/iroh-blobs.git", rev = "b33af91e8a4bd189cc0f954fc6584feb5ffd1823" }
+# Keep pairing and peer discovery on the same audited multi-interface fixes.
+iroh-mdns-address-lookup = { git = "https://github.com/THQDDQHT/Engine.git", rev = "b799c0ecac4101af72ca7b9aeced58b4d34a34f8" }
+swarm-discovery = { git = "https://github.com/THQDDQHT/Engine.git", rev = "b799c0ecac4101af72ca7b9aeced58b4d34a34f8" }
 
 # dev profile:用 line-tables-only 替代完整 dwarf,大幅缩短 link 阶段。
 # 实测 inner-loop 11s → 4s(-65%),target 体积 46GB → 4.4GB(-91%)。

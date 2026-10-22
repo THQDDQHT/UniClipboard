@@ -19,6 +19,7 @@ pub mod code_mint;
 pub mod discovery_constants;
 pub mod mdns_publisher;
 pub mod mdns_resolver;
+mod mdns_transport;
 pub mod session;
 pub mod wire;
 

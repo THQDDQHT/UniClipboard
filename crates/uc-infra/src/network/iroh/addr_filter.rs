@@ -4,7 +4,7 @@
 //! link-local 169.254/16、CGNAT/Tailscale overlay 100.64/10 与
 //! fd7a:115c:a1e0::/48）在三条路径上都得用完全相同的判定 ——
 //!
-//! 1. `node.rs::build_addr_filter` 决定本端 endpoint 发布哪些地址；
+//! 1. `build_addr_filter` controls endpoint address publication.
 //! 2. `invitation_adapter::serialize_filtered_endpoint_ticket` 决定哪些
 //!    地址进 sponsor ticket；
 //! 3. `dev pairing addrs / issue --addr` 列出候选给开发者诊断。
@@ -14,23 +14,124 @@
 //! 地址。把判定集中在这里，让上述三处共享同一份代码，从根上消除分叉的可能。
 
 use std::borrow::Cow;
+use std::collections::BTreeSet;
+use std::io;
 use std::net::{IpAddr, Ipv4Addr};
 
+use if_addrs::{IfAddr, Interface};
+use iroh::address_lookup::AddrFilter;
 use iroh::{EndpointAddr, TransportAddr};
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
-/// A snapshot of one local LAN interface — IP + netmask — captured at
-/// endpoint-bind time so the hairpin filter (`apply_addr_filter`) can decide
-/// whether a peer candidate IP falls inside one of *our* RFC1918 subnets and
-/// is therefore reachable via direct LAN.
-///
-/// Captured once because [`iroh::address_lookup::AddrFilter`] is fixed at
-/// endpoint bind; the user must restart the daemon if they switch wifi /
-/// LAN. That matches the existing constraint on `allow_overlay`.
+/// LAN subnets refreshed for every publication, including after network changes.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LocalLanV4 {
     pub ip: Ipv4Addr,
     pub netmask: Ipv4Addr,
+}
+
+/// Exclude known container and host-only interfaces without guessing by IP range.
+fn is_virtual_bridge_interface(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    if name.starts_with("vethernet") {
+        return matches!(
+            name.as_str(),
+            "vethernet (default switch)" | "vethernet (dockernat)"
+        ) || name.starts_with("vethernet (wsl");
+    }
+    matches!(name.as_str(), "docker0" | "podman0")
+        || [
+            "br-",
+            "veth",
+            "virbr",
+            "lxcbr",
+            "cni",
+            "flannel",
+            "cali",
+            "weave",
+            "vmnet",
+            "vmware network adapter vmnet",
+            "virtualbox host-only",
+            "vboxnet",
+        ]
+        .iter()
+        .any(|prefix| name.starts_with(prefix))
+}
+
+fn read_interfaces() -> io::Result<Vec<Interface>> {
+    if_addrs::get_if_addrs().inspect_err(|error| {
+        warn!(
+            target: "iroh.addr_filter",
+            error_kind = ?error.kind(),
+            "network interface enumeration failed; address publication suspended"
+        );
+    })
+}
+
+fn excluded_interface_ips(ifaces: &[Interface]) -> BTreeSet<IpAddr> {
+    let usable_ips: BTreeSet<_> = ifaces
+        .iter()
+        .filter(|iface| !is_virtual_bridge_interface(&iface.name))
+        .map(Interface::ip)
+        .collect();
+    ifaces
+        .iter()
+        .filter(|iface| is_virtual_bridge_interface(&iface.name))
+        .map(Interface::ip)
+        .filter(|ip| !usable_ips.contains(ip))
+        .collect()
+}
+
+/// Refresh interfaces whenever Iroh republishes after a local address change.
+pub(crate) fn build_addr_filter(allow_overlay: bool) -> AddrFilter {
+    build_addr_filter_with_interfaces(allow_overlay, read_interfaces)
+}
+
+fn build_addr_filter_with_interfaces(
+    allow_overlay: bool,
+    read: impl Fn() -> io::Result<Vec<Interface>> + Send + Sync + 'static,
+) -> AddrFilter {
+    AddrFilter::new(move |addrs: &Vec<TransportAddr>| match read() {
+        Ok(ifaces) => apply_addr_filter(
+            addrs,
+            allow_overlay,
+            &local_lan_v4(&ifaces),
+            &excluded_interface_ips(&ifaces),
+        ),
+        Err(_) => Cow::Owned(Vec::new()),
+    })
+}
+
+/// Share interface classification between pairing mDNS and endpoint tickets.
+pub(crate) fn enumerate_publish_addrs() -> Vec<IpAddr> {
+    match read_interfaces() {
+        Ok(ifaces) => publish_addrs(&ifaces),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Share current LAN multicast interfaces between pairing and peer discovery.
+pub(crate) fn multicast_interfaces(addrs: &[IpAddr]) -> Vec<Ipv4Addr> {
+    // The shared filter already excludes virtual bridges; omit public and overlay IPs.
+    let mut interfaces: Vec<_> = addrs
+        .iter()
+        .filter_map(|addr| match addr {
+            IpAddr::V4(ip) if ip.is_private() => Some(*ip),
+            _ => None,
+        })
+        .collect();
+    interfaces.sort_unstable();
+    interfaces.dedup();
+    interfaces
+}
+
+fn publish_addrs(ifaces: &[Interface]) -> Vec<IpAddr> {
+    ifaces
+        .iter()
+        .filter(|iface| !iface.is_loopback() && !is_virtual_bridge_interface(&iface.name))
+        .map(Interface::ip)
+        .filter(|ip| !is_virtual_nic_ip(*ip, true))
+        .collect()
 }
 
 /// 判断某个 IP 是否属于需要过滤的虚拟网卡候选。
@@ -56,9 +157,15 @@ pub(crate) fn is_virtual_nic_ip(ip: IpAddr, allow_overlay: bool) -> bool {
     }
 }
 
-fn should_filter_transport_addr(addr: &TransportAddr, allow_overlay: bool) -> bool {
+fn should_filter_transport_addr(
+    addr: &TransportAddr,
+    allow_overlay: bool,
+    excluded_ips: &BTreeSet<IpAddr>,
+) -> bool {
     match addr {
-        TransportAddr::Ip(socket) => is_virtual_nic_ip(socket.ip(), allow_overlay),
+        TransportAddr::Ip(socket) => {
+            is_virtual_nic_ip(socket.ip(), allow_overlay) || excluded_ips.contains(&socket.ip())
+        }
         _ => false,
     }
 }
@@ -116,62 +223,29 @@ fn peer_reachable_in_local_lan(addrs: &[TransportAddr], local_lan_v4: &[LocalLan
     })
 }
 
-/// Enumerate this host's RFC1918 IPv4 interface addresses (with their
-/// netmasks) so the hairpin filter can decide whether a peer candidate
-/// falls inside one of our LAN subnets.
-///
-/// Run once at endpoint-bind time; the result is captured into the
-/// `AddrFilter` closure and is not refreshed afterwards. Switching wifi /
-/// LAN requires a daemon restart (same constraint as `allow_overlay`).
-///
-/// Returns an empty vec — and logs a warn — if interface enumeration fails;
-/// the hairpin filter then degrades to "never drop public IPs", i.e. the
-/// pre-patch behaviour.
-pub(crate) fn enumerate_local_lan_v4() -> Vec<LocalLanV4> {
-    let ifaces = match if_addrs::get_if_addrs() {
-        Ok(ifaces) => ifaces,
-        Err(e) => {
-            warn!(
-                target: "iroh.addr_filter",
-                error = %e,
-                "if_addrs::get_if_addrs failed; hairpin filter degrades to off"
-            );
-            return Vec::new();
-        }
-    };
-
-    let out: Vec<LocalLanV4> = ifaces
-        .into_iter()
-        .filter(|iface| !iface.is_loopback())
-        .filter_map(|iface| match iface.addr {
-            if_addrs::IfAddr::V4(v4) if v4.ip.is_private() => Some(LocalLanV4 {
+fn local_lan_v4(ifaces: &[Interface]) -> Vec<LocalLanV4> {
+    ifaces
+        .iter()
+        .filter(|iface| !iface.is_loopback() && !is_virtual_bridge_interface(&iface.name))
+        .filter_map(|iface| match &iface.addr {
+            IfAddr::V4(v4) if v4.ip.is_private() => Some(LocalLanV4 {
                 ip: v4.ip,
                 netmask: v4.netmask,
             }),
             _ => None,
         })
-        .collect();
-
-    info!(
-        target: "iroh.addr_filter",
-        count = out.len(),
-        subnets = ?out,
-        "enumerated local LAN v4 subnets for hairpin filter"
-    );
-    out
+        .collect()
 }
 
-fn log_dropped_addrs(dropped: &[String], allow_overlay: bool) {
-    if dropped.is_empty() {
-        return;
+fn log_dropped_addrs(dropped_count: usize, allow_overlay: bool) {
+    if dropped_count > 0 {
+        debug!(
+            target: "iroh.addr_filter",
+            allow_overlay,
+            dropped_count,
+            "filtered network address candidates",
+        );
     }
-    debug!(
-        target: "iroh.addr_filter",
-        allow_overlay,
-        dropped_count = dropped.len(),
-        dropped = ?dropped,
-        "filtered virtual-NIC addresses from candidate set",
-    );
 }
 
 /// 过滤 iroh `AddrFilter` 收到的候选地址集合。
@@ -196,10 +270,11 @@ pub(crate) fn apply_addr_filter<'a>(
     addrs: &'a Vec<TransportAddr>,
     allow_overlay: bool,
     local_lan_v4: &[LocalLanV4],
+    excluded_ips: &BTreeSet<IpAddr>,
 ) -> Cow<'a, Vec<TransportAddr>> {
     let any_virtual = addrs
         .iter()
-        .any(|addr| should_filter_transport_addr(addr, allow_overlay));
+        .any(|addr| should_filter_transport_addr(addr, allow_overlay, excluded_ips));
     let drop_hairpin = peer_reachable_in_local_lan(addrs, local_lan_v4);
 
     if !any_virtual && !drop_hairpin {
@@ -208,7 +283,7 @@ pub(crate) fn apply_addr_filter<'a>(
 
     let kept: Vec<TransportAddr> = addrs
         .iter()
-        .filter(|addr| !should_filter_transport_addr(addr, allow_overlay))
+        .filter(|addr| !should_filter_transport_addr(addr, allow_overlay, excluded_ips))
         .filter(|addr| {
             // Apply hairpin filter only when peer is LAN-reachable.
             if !drop_hairpin {
@@ -222,54 +297,217 @@ pub(crate) fn apply_addr_filter<'a>(
         .cloned()
         .collect();
 
-    let virtual_dropped: Vec<String> = addrs
-        .iter()
-        .filter_map(|addr| match addr {
-            TransportAddr::Ip(socket) if is_virtual_nic_ip(socket.ip(), allow_overlay) => {
-                Some(format!("virtual:{}", socket))
-            }
-            _ => None,
-        })
-        .collect();
-    let hairpin_dropped: Vec<String> = if drop_hairpin {
-        addrs
-            .iter()
-            .filter_map(|addr| match addr {
-                TransportAddr::Ip(socket)
-                    if !is_virtual_nic_ip(socket.ip(), allow_overlay)
-                        && is_public_v4(socket.ip()) =>
-                {
-                    Some(format!("hairpin:{}", socket))
-                }
-                _ => None,
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
-    let mut all_dropped = virtual_dropped;
-    all_dropped.extend(hairpin_dropped);
-    log_dropped_addrs(&all_dropped, allow_overlay);
+    log_dropped_addrs(addrs.len() - kept.len(), allow_overlay);
 
     Cow::Owned(kept)
 }
 
-/// 过滤完整的 `EndpointAddr`，用于把本端地址写进可交给远端拨号的 ticket。
+/// Filter a complete endpoint address before serializing it into a peer ticket.
 pub(crate) fn filter_endpoint_addr(addr: EndpointAddr, allow_overlay: bool) -> EndpointAddr {
-    let EndpointAddr { id, addrs } = addr;
-    let mut kept = Vec::new();
-    let mut dropped = Vec::new();
+    let ifaces = match read_interfaces() {
+        Ok(ifaces) => ifaces,
+        Err(_) => return EndpointAddr::new(addr.id),
+    };
+    filter_endpoint_addr_with_interfaces(addr, allow_overlay, &ifaces)
+}
 
-    for addr in addrs {
-        if should_filter_transport_addr(&addr, allow_overlay) {
-            if let TransportAddr::Ip(socket) = &addr {
-                dropped.push(socket.to_string());
-            }
-        } else {
-            kept.push(addr);
+fn filter_endpoint_addr_with_interfaces(
+    addr: EndpointAddr,
+    allow_overlay: bool,
+    ifaces: &[Interface],
+) -> EndpointAddr {
+    let excluded_ips = excluded_interface_ips(ifaces);
+    let EndpointAddr { id, addrs } = addr;
+    let original_count = addrs.len();
+    let kept: Vec<_> = addrs
+        .into_iter()
+        .filter(|addr| !should_filter_transport_addr(addr, allow_overlay, &excluded_ips))
+        .collect();
+    log_dropped_addrs(original_count - kept.len(), allow_overlay);
+    EndpointAddr::from_parts(id, kept)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        build_addr_filter_with_interfaces, filter_endpoint_addr_with_interfaces,
+        is_virtual_bridge_interface, local_lan_v4, multicast_interfaces, publish_addrs,
+    };
+    use if_addrs::{IfAddr, Ifv4Addr, Interface};
+    use iroh::address_lookup::EndpointData;
+    use iroh::{EndpointAddr, SecretKey, TransportAddr};
+    use std::io;
+    use std::net::{IpAddr, Ipv4Addr};
+    use std::sync::{Arc, Mutex};
+
+    fn interface(name: &str, ip: &str, mask: &str) -> Interface {
+        Interface {
+            name: name.to_owned(),
+            addr: IfAddr::V4(Ifv4Addr {
+                ip: ip.parse().expect("ip"),
+                netmask: mask.parse().expect("mask"),
+                broadcast: None,
+                prefixlen: u32::from(mask.parse::<Ipv4Addr>().expect("mask")).count_ones() as u8,
+            }),
+            index: None,
+            #[cfg(windows)]
+            adapter_name: name.to_owned(),
         }
     }
 
-    log_dropped_addrs(&dropped, allow_overlay);
-    EndpointAddr::from_parts(id, kept)
+    #[test]
+    fn lan_subnets_exclude_container_interfaces_but_keep_physical_network() {
+        for name in ["docker0", "br-123456789abc", "vEthernet (WSL)", "vmnet8"] {
+            let ifaces = [
+                interface("en0", "192.168.31.10", "255.255.255.0"),
+                interface(name, "172.17.0.1", "255.255.0.0"),
+            ];
+            let subnets = local_lan_v4(&ifaces);
+            assert_eq!(subnets.len(), 1, "virtual interface: {name}");
+            assert_eq!(subnets[0].ip, Ipv4Addr::new(192, 168, 31, 10));
+        }
+    }
+
+    #[test]
+    fn physical_bridges_and_explicit_overlay_interfaces_are_not_container_bridges() {
+        for name in [
+            "en0",
+            "en7",
+            "Wi-Fi",
+            "Ethernet",
+            "bridge0",
+            "bridge100",
+            "utun3",
+            "tailscale0",
+            "vEthernet (External Switch)",
+        ] {
+            assert!(!is_virtual_bridge_interface(name), "{name}");
+        }
+        for name in [
+            "podman0",
+            "virbr0",
+            "veth123",
+            "vboxnet0",
+            "VMware Network Adapter VMnet8",
+            "vEthernet (Default Switch)",
+            "vEthernet (WSL (Hyper-V firewall))",
+        ] {
+            assert!(is_virtual_bridge_interface(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn pairing_and_endpoint_publication_keep_the_same_physical_addresses() {
+        let ifaces = vec![
+            interface("en0", "172.17.0.20", "255.255.255.0"),
+            interface("docker0", "172.18.0.1", "255.255.0.0"),
+            interface("utun3", "198.18.0.1", "255.255.0.0"),
+        ];
+        let addr = EndpointAddr::new(SecretKey::generate().public())
+            .with_ip_addr("172.17.0.20:7777".parse().unwrap())
+            .with_ip_addr("172.18.0.1:7777".parse().unwrap())
+            .with_ip_addr("198.18.0.1:7777".parse().unwrap());
+        let filtered = filter_endpoint_addr_with_interfaces(addr.clone(), false, &ifaces);
+        assert_eq!(
+            filtered
+                .ip_addrs()
+                .map(|addr| addr.ip())
+                .collect::<Vec<_>>(),
+            publish_addrs(&ifaces)
+        );
+        assert_eq!(filtered.ip_addrs().count(), 1);
+        let filter = build_addr_filter_with_interfaces(false, move || Ok(ifaces.clone()));
+        let data = EndpointData::new(addr.addrs.into_iter().collect());
+        assert_eq!(
+            data.filtered_addrs(&filter).as_ref(),
+            &filtered.addrs.into_iter().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn address_publication_reads_changed_interfaces_without_rebuilding_the_filter() {
+        let ifaces = Arc::new(Mutex::new(vec![interface(
+            "en0",
+            "192.168.31.10",
+            "255.255.255.0",
+        )]));
+        let source = Arc::clone(&ifaces);
+        let filter =
+            build_addr_filter_with_interfaces(false, move || Ok(source.lock().unwrap().clone()));
+        let data = EndpointData::new(vec![
+            TransportAddr::Ip("192.168.31.10:7777".parse().unwrap()),
+            TransportAddr::Ip("10.0.0.20:7777".parse().unwrap()),
+        ]);
+        assert_eq!(data.filtered_addrs(&filter).len(), 2);
+        *ifaces.lock().unwrap() = vec![
+            interface("docker0", "192.168.31.10", "255.255.255.0"),
+            interface("en7", "10.0.0.20", "255.255.255.0"),
+        ];
+        assert_eq!(
+            data.filtered_addrs(&filter).as_ref(),
+            &vec![TransportAddr::Ip("10.0.0.20:7777".parse().unwrap())]
+        );
+    }
+
+    #[test]
+    fn shared_ip_on_a_physical_interface_remains_publishable() {
+        let ifaces = vec![
+            interface("docker0", "172.17.0.1", "255.255.0.0"),
+            interface("en0", "172.17.0.1", "255.255.255.0"),
+        ];
+        let addr = EndpointAddr::new(SecretKey::generate().public())
+            .with_ip_addr("172.17.0.1:7777".parse().unwrap());
+        assert_eq!(
+            filter_endpoint_addr_with_interfaces(addr.clone(), false, &ifaces),
+            addr
+        );
+    }
+
+    #[test]
+    fn failed_interface_read_publishes_nothing_and_next_publication_recovers() {
+        let fail = Arc::new(Mutex::new(true));
+        let source = Arc::clone(&fail);
+        let filter = build_addr_filter_with_interfaces(false, move || {
+            if *source.lock().unwrap() {
+                Err(io::Error::other("fixture"))
+            } else {
+                Ok(vec![interface("en0", "192.168.31.10", "255.255.255.0")])
+            }
+        });
+        let data = EndpointData::new(vec![TransportAddr::Ip(
+            "192.168.31.10:7777".parse().unwrap(),
+        )]);
+        assert!(data.filtered_addrs(&filter).is_empty());
+        *fail.lock().unwrap() = false;
+        assert_eq!(data.filtered_addrs(&filter).len(), 1);
+    }
+
+    #[test]
+    fn multicast_uses_all_lan_interfaces_without_proxy_or_overlay_egress() {
+        let addrs: Vec<IpAddr> = [
+            "192.168.31.7",
+            "10.12.135.133",
+            "172.20.1.2",
+            "192.168.31.7",
+            "198.18.0.1",
+            "105.168.4.49",
+            "100.64.0.1",
+            "169.254.1.2",
+            "127.0.0.1",
+            "::1",
+            "fd7a:115c:a1e0::1",
+        ]
+        .into_iter()
+        .map(|ip| ip.parse().expect("fixture address"))
+        .collect();
+
+        assert_eq!(
+            multicast_interfaces(&addrs),
+            vec![
+                Ipv4Addr::new(10, 12, 135, 133),
+                Ipv4Addr::new(172, 20, 1, 2),
+                Ipv4Addr::new(192, 168, 31, 7),
+            ]
+        );
+    }
 }

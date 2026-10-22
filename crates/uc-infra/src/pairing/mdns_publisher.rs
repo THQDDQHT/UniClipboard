@@ -22,25 +22,17 @@
 //!
 //! Sharing iroh's `Discoverer` would force compromises on all three.
 
-use std::net::IpAddr;
-use std::time::Duration;
-
-use swarm_discovery::{Discoverer, DropGuard, IpClass, SpawnError, TxtAttributeError};
+use swarm_discovery::{DropGuard, SpawnError, TxtAttributeError};
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
+
+use super::mdns_transport::pairing_discoverer;
+use crate::network::iroh::enumerate_publish_addrs;
 
 use super::discovery_constants::{
-    compute_code_hash, PAIR_SERVICE_NAME, TXT_CODE_HASH, TXT_EXPIRES_AT_MS, TXT_NODE_ID, TXT_TICKET,
+    compute_code_hash, TXT_CODE_HASH, TXT_EXPIRES_AT_MS, TXT_NODE_ID, TXT_TICKET,
 };
-
-/// Default mDNS query/announce cadence for pairing. Tighter than the
-/// 10s default `swarm-discovery` ships because pairing is a UX-critical
-/// moment — the joiner is *waiting on the screen* — and the window is
-/// short anyway (typically <5 min). Trade-off is more multicast packets;
-/// at one TXT record per device for the duration of the window this is
-/// well below "noticed by other LAN traffic."
-const PAIR_CADENCE: Duration = Duration::from_secs(2);
 
 /// Errors raised while starting a publisher. Stopping is infallible
 /// (`Drop` impl).
@@ -120,16 +112,8 @@ impl MdnsPairingPublisher {
             "starting mDNS pairing publisher",
         );
 
-        let discoverer = Discoverer::new(PAIR_SERVICE_NAME.to_string(), actor_id.clone())
+        let discoverer = pairing_discoverer(actor_id.clone(), &addrs)
             .with_addrs(port, addrs)
-            .with_cadence(PAIR_CADENCE)
-            // `Auto` binds whatever the kernel lets us bind (v4 alone, v6
-            // alone, or both) and only fails when both sockets are
-            // unavailable. `V4AndV6` would *require* both and surface as
-            // SocketBind on any host whose IPv6 default route is missing
-            // — exactly the LAN-only / Wi-Fi-off scenarios we exist to
-            // serve.
-            .with_ip_class(IpClass::Auto)
             // `TXT_NODE_ID` carries the derived actor id (DNS-label-safe),
             // not the full hex NodeId — that already lives inside the
             // ticket. Resolver compares its own derived id against this
@@ -173,27 +157,6 @@ pub(crate) fn derive_actor_id(node_id: &str) -> String {
     // entropy — collision-proof at any realistic LAN swarm size).
     let digest = blake3::hash(node_id.as_bytes());
     hex::encode(&digest.as_bytes()[..8])
-}
-
-/// Enumerate local interface IPs eligible to publish. Skips loopback in
-/// production; tests that need loopback construct a `Discoverer`
-/// directly with a hand-picked address.
-///
-/// Best-effort: any `if-addrs` failure yields an empty list (logged
-/// warn) rather than failing the whole publisher — a sponsor with no
-/// usable interface still gets to publish via cloud channel.
-fn enumerate_publish_addrs() -> Vec<IpAddr> {
-    match if_addrs::get_if_addrs() {
-        Ok(ifs) => ifs
-            .into_iter()
-            .map(|i| i.addr.ip())
-            .filter(|ip| !ip.is_loopback())
-            .collect(),
-        Err(err) => {
-            warn!(error = %err, "if-addrs enumerate failed; mDNS publisher will run without local addresses");
-            Vec::new()
-        }
-    }
 }
 
 #[cfg(test)]

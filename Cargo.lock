@@ -1943,7 +1943,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccc2776f0c61eca1ca32528f85548abd1a4be8fb53d1b21c013e4f18da1e7090"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -4202,6 +4202,7 @@ dependencies = [
 [[package]]
 name = "iroh-blobs"
 version = "0.102.0"
+source = "git+https://github.com/UniClipboard/iroh-blobs.git?rev=b33af91e8a4bd189cc0f954fc6584feb5ffd1823#b33af91e8a4bd189cc0f954fc6584feb5ffd1823"
 dependencies = [
  "arrayvec",
  "bao-tree",
@@ -4278,8 +4279,7 @@ dependencies = [
 [[package]]
 name = "iroh-mdns-address-lookup"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a68d7e131dd029cb533a4e79d819a2f0271b4af9a268d8ef25fd398c1191d83"
+source = "git+https://github.com/THQDDQHT/Engine.git?rev=b799c0ecac4101af72ca7b9aeced58b4d34a34f8#b799c0ecac4101af72ca7b9aeced58b4d34a34f8"
 dependencies = [
  "data-encoding",
  "derive_more",
@@ -8633,9 +8633,8 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "swarm-discovery"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36ae41d2d4ad85250007d0f061fddeec5212a15d5c4abad52c475265775572ac"
+version = "0.6.3"
+source = "git+https://github.com/THQDDQHT/Engine.git?rev=b799c0ecac4101af72ca7b9aeced58b4d34a34f8#b799c0ecac4101af72ca7b9aeced58b4d34a34f8"
 dependencies = [
  "acto",
  "hickory-proto",
