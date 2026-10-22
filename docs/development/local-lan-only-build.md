@@ -23,7 +23,8 @@
 
 ## GitHub 构建
 
-打开 fork 的 Actions，选择 `Build personal installers`，分支选择
+推送本分支会自动构建。也可打开 fork 的 Actions，选择 `Build personal installers`
+（工作流文件为 `build.yml`），分支选择
 `feat/v0.19.3-lan-fix`，手动运行：
 
 - `all`：Apple Silicon macOS `.dmg` 和 Windows x64 安装程序。

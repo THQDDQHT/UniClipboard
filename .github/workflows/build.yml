@@ -1,7 +1,9 @@
 name: Build personal installers
-run-name: v0.19.3 LAN fix · ${{ inputs.platform }}
+run-name: v0.19.3 LAN fix · ${{ inputs.platform || 'all' }}
 
 on:
+  push:
+    branches: [feat/v0.19.3-lan-fix]
   workflow_dispatch:
     inputs:
       platform:
@@ -15,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: personal-build-${{ github.ref }}-${{ inputs.platform }}
+  group: personal-build-${{ github.ref }}-${{ inputs.platform || 'all' }}
   cancel-in-progress: false
 
 jobs:
@@ -27,7 +29,7 @@ jobs:
       - id: targets
         shell: bash
         env:
-          PLATFORM: ${{ inputs.platform }}
+          PLATFORM: ${{ inputs.platform || 'all' }}
         run: |
           case "$PLATFORM" in
             all) TARGETS='[{"os":"macos-latest","target":"aarch64-apple-darwin","bundles":"app,dmg"},{"os":"windows-latest","target":"x86_64-pc-windows-msvc","bundles":"nsis"}]' ;;
